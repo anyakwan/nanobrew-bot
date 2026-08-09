@@ -232,7 +232,10 @@ async function buildReplyMessage(lead) {
     event_type: lead?.event_type || lead?.event_type_name,
     event_date: lead?.event_date || lead?.event_start_date,
     guest_count: lead?.guest_count || lead?.number_of_guests || lead?.head_count,
-    message: lead?.message || lead?.notes || lead?.description,
+    message: lead?.message || lead?.notes || lead?.description || lead?.event_description,
+    start_time: lead?.start_time,
+    end_time: lead?.end_time,
+    location_name: lead?.location?.name,
   };
 
   const res = await fetch("https://api.anthropic.com/v1/messages", {
@@ -329,8 +332,7 @@ app.post("/webhooks/tripleseat", async (req, res) => {
   // we do the (slower) work of calling the API back.
   res.status(200).send("OK");
 
-  const { webhook_trigger_type, object } = req.body || {};
-  const lead = object; // Tripleseat nests lead data under "object"
+  const { webhook_trigger_type, lead } = req.body || {};
 
   // Log the full payload once so we can see the exact real field names.
   // Safe to leave in during testing; remove or reduce later if noisy.
