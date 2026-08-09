@@ -255,23 +255,30 @@ async function buildReplyMessage(lead) {
 }
 
 // ---------------------------------------------------------------------------
-// 4. Post the reply back into Tripleseat as a note on the lead
-//    CONFIRM this path/payload shape against your account's API docs.
+// 4. Email the reply directly to the person who inquired (via Resend)
 // ---------------------------------------------------------------------------
-async function addNoteToLead(leadId, message) {
-  const token = await getAccessToken();
+async function emailLead(lead, message) {
+  const toEmail = lead?.email || lead?.contact_email;
+  if (!toEmail) {
+    throw new Error("No email address found on this lead, cannot send reply.");
+  }
 
-  const res = await fetch(`${TRIPLESEAT_API_BASE}/v1/leads/${leadId}/notes`, {
+  const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
+      Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
     },
-    body: JSON.stringify({ note: { content: message } }),
+    body: JSON.stringify({
+      from: process.env.FROM_EMAIL, // e.g. "Anya <anya@yourdomain.com>"
+      to: toEmail,
+      subject: "Your Nano Brew event inquiry",
+      text: message,
+    }),
   });
 
   if (!res.ok) {
-    throw new Error(`Failed to add note: ${res.status} ${await res.text()}`);
+    throw new Error(`Resend error: ${res.status} ${await res.text()}`);
   }
 
   return res.json();
@@ -303,8 +310,8 @@ app.post("/webhooks/tripleseat", async (req, res) => {
     }
 
     const message = await buildReplyMessage(lead);
-    await addNoteToLead(leadId, message);
-    console.log(`Auto-replied to lead ${leadId}`);
+    await emailLead(lead, message);
+    console.log(`Emailed reply for lead ${leadId}`);
   } catch (err) {
     console.error("Failed to process inquiry:", err);
     // Consider adding retry logic or alerting yourself here
