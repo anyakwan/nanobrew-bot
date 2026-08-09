@@ -228,11 +228,11 @@ hope we can host your event at Nano Brew!
 
 async function buildReplyMessage(lead) {
   const leadDetails = {
-    name: lead?.first_name,
-    event_type: lead?.event_type,
-    event_date: lead?.event_date,
-    guest_count: lead?.guest_count,
-    message: lead?.message || lead?.notes, // the actual inquiry text, if present
+    name: lead?.first_name || lead?.contact?.first_name,
+    event_type: lead?.event_type || lead?.event_type_name,
+    event_date: lead?.event_date || lead?.event_start_date,
+    guest_count: lead?.guest_count || lead?.number_of_guests || lead?.head_count,
+    message: lead?.message || lead?.notes || lead?.description,
   };
 
   const res = await fetch("https://api.anthropic.com/v1/messages", {
@@ -281,7 +281,12 @@ async function buildReplyMessage(lead) {
 // 4. Email the reply directly to the person who inquired (via Resend)
 // ---------------------------------------------------------------------------
 async function emailLead(lead, message) {
-  const toEmail = lead?.email || lead?.contact_email;
+  const toEmail =
+    lead?.email_address ||
+    lead?.email ||
+    lead?.contact_email ||
+    lead?.contact?.email_address ||
+    lead?.contact?.email;
   if (!toEmail) {
     throw new Error("No email address found on this lead, cannot send reply.");
   }
@@ -324,16 +329,21 @@ app.post("/webhooks/tripleseat", async (req, res) => {
   // we do the (slower) work of calling the API back.
   res.status(200).send("OK");
 
-  const { webhook_trigger_type, lead, event } = req.body || {};
+  const { webhook_trigger_type, object } = req.body || {};
+  const lead = object; // Tripleseat nests lead data under "object"
+
+  // Log the full payload once so we can see the exact real field names.
+  // Safe to leave in during testing; remove or reduce later if noisy.
+  console.log("Full webhook payload:", JSON.stringify(req.body));
 
   if (webhook_trigger_type !== "CREATE_LEAD") {
     return; // Only auto-respond to brand-new inquiries
   }
 
   try {
-    const leadId = lead?.id ?? event?.lead_id;
+    const leadId = lead?.id;
     if (!leadId) {
-      console.warn("No lead id found on payload, skipping:", req.body);
+      console.warn("No lead id found on payload, skipping.");
       return;
     }
 
