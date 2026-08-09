@@ -52,18 +52,34 @@ const {
 
 // ---------------------------------------------------------------------------
 // 1. Verify the webhook came from Tripleseat
+//    Tripleseat's X-Signature header looks like: t=<timestamp>,v1=<hex signature>
+//    The signed content is "{timestamp}.{raw_body}", HMAC-SHA256'd with the
+//    webhook's signing key, then hex-encoded.
 // ---------------------------------------------------------------------------
 function verifySignature(req) {
   const signatureHeader = req.get("X-Signature");
   if (!signatureHeader || !req.rawBody) return false;
 
+  // Parse "t=169...,v1=abcdef..." into { t: "169...", v1: "abcdef..." }
+  const parts = {};
+  for (const pair of signatureHeader.split(",")) {
+    const [key, value] = pair.split("=");
+    if (key && value) parts[key.trim()] = value.trim();
+  }
+
+  const timestamp = parts.t;
+  const receivedSignature = parts.v1;
+  if (!timestamp || !receivedSignature) return false;
+
+  const signedPayload = `${timestamp}.${req.rawBody.toString()}`;
+
   const expected = crypto
     .createHmac("sha256", TRIPLESEAT_WEBHOOK_SECRET)
-    .update(req.rawBody)
+    .update(signedPayload)
     .digest("hex");
 
   // Constant-time comparison to avoid timing attacks
-  const a = Buffer.from(signatureHeader);
+  const a = Buffer.from(receivedSignature);
   const b = Buffer.from(expected);
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
