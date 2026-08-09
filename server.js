@@ -25,6 +25,13 @@ require("dotenv").config();
 
 const app = express();
 
+// Log every incoming request so we can see webhook attempts even if
+// something downstream (routing, signature check) rejects them.
+app.use((req, res, next) => {
+  console.log(`Incoming request: ${req.method} ${req.path}`);
+  next();
+});
+
 // Tripleseat needs the raw request body to verify the signature,
 // so capture it before JSON parsing.
 app.use(
@@ -288,7 +295,12 @@ async function emailLead(lead, message) {
 // 5. Webhook endpoint
 // ---------------------------------------------------------------------------
 app.post("/webhooks/tripleseat", async (req, res) => {
+  console.log(
+    `Webhook received. trigger_type=${req.body?.webhook_trigger_type} has_signature_header=${!!req.get("X-Signature")}`
+  );
+
   if (!verifySignature(req)) {
+    console.warn("Webhook signature check FAILED -- rejecting request.");
     return res.status(401).send("Invalid signature");
   }
 
